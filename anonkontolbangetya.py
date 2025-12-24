@@ -1,53 +1,21 @@
-import os
-import sys
-import json
-import base64
+import os, sys, json, base64, requests
 from datetime import datetime
 
-# ===== COLOR SAFE =====
-try:
-    from termcolor import colored
-except:
-    def colored(t, *_a, **_k): return t
-
-import requests
-import threading
-import time
-
-# ===== CONFIG =====
+# ================= FILE =================
 ACCOUNTS_FILE = "accounts.json"
 CONFIG_FILE = "config.json"
-PROMPT_FILE = os.path.expanduser("~/storage/downloads/anonbreak.txt")
+PROMPT_FILE = "anonbreak.txt"
 
-# ===== OWNER LOCK (BASE64) =====
-_OWNER_B64 = "YW5vbmtvbnRvbGJhbmdldHN1dQ=="
+# ================= OWNER (BASE64) =================
+_OWNER_B64 = "YW5vbmtvbnRvbGJhbmdldHlh"
 
-def get_owner():
+def owner_name():
     return base64.b64decode(_OWNER_B64).decode()
 
 def is_owner(u):
-    return u == get_owner()
+    return u == owner_name()
 
-# ===== API VALIDATION =====
-def api_valid(api_key):
-    return (
-        isinstance(api_key, str)
-        and api_key.startswith("sk-or-")
-        and len(api_key) > 20
-    )
-
-# ===== BANNER =====
-BANNER = r"""
-╔╦═╦╦═╦═╦═╦═╦══╦═╦╦═╦═╦╗
-║║║║║║║╬║║║║║╔╗║║║║║║║║║
-║║║║║║║╗╣║║║║╠╣║║║║║║║║║
-╚═╩═╩═╩╩╩╩═╩╩╝╚╩╩═╩═╩╩═╝
-
-WORMAN0NGPT BY AN0N
-OPENROUTER AI
-"""
-
-# ===== UTIL =====
+# ================= UTIL =================
 def clear():
     os.system("clear" if os.name != "nt" else "cls")
 
@@ -55,235 +23,156 @@ def load_json(p, d):
     if not os.path.exists(p):
         return d
     try:
-        with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
+        return json.load(open(p, "r", encoding="utf-8"))
     except:
         return d
 
 def save_json(p, d):
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(d, f, indent=2, ensure_ascii=False)
+    json.dump(d, open(p, "w", encoding="utf-8"), indent=2)
 
 def pause():
-    input(colored("\nTekan ENTER...", "cyan"))
+    input("\nENTER...")
     clear()
 
-# ===== INIT FILE =====
-def ensure_files():
-    acc = load_json(ACCOUNTS_FILE, {})
-    owner = get_owner()
-    if owner not in acc:
-        acc[owner] = {"expired": ""}
-    save_json(ACCOUNTS_FILE, acc)
+# ================= INIT =================
+def init_files():
+    if not os.path.exists(ACCOUNTS_FILE):
+        save_json(ACCOUNTS_FILE, {
+            owner_name(): {"expired": ""}
+        })
 
     if not os.path.exists(CONFIG_FILE):
-        save_json(CONFIG_FILE, {"api_key": "", "language": "Indonesian"})
+        save_json(CONFIG_FILE, {"api_key": ""})
 
-# ===== LOGIN =====
-def login(acc):
+# ================= LOGIN =================
+def login():
     clear()
-    print(colored(BANNER, "red"))
-    u = input(colored("USERNAME: ", "green")).strip()
+    acc = load_json(ACCOUNTS_FILE, {})
+    u = input("USERNAME: ").strip()
 
     if u not in acc:
-        print(colored("[!] USERNAME TIDAK TERDAFTAR", "red"))
+        print("[!] USERNAME TIDAK TERDAFTAR")
         sys.exit(1)
 
-    exp = acc[u].get("expired", "")
+    exp = acc[u]["expired"]
     if exp:
         if datetime.now().date() > datetime.strptime(exp, "%Y-%m-%d").date():
-            print(colored("[!] AKUN EXPIRED", "red"))
+            print("\nAKUN LU UDAH EXPIRED\nBEGO BELI LAGI SONO\n")
             sys.exit(1)
 
-    clear()
     return u
 
-# ===== PROMPT =====
+# ================= PROMPT =================
 def load_prompt():
     if not os.path.exists(PROMPT_FILE):
-        print(colored("[!] anonbreak.txt tidak ditemukan", "red"))
         return ""
-    with open(PROMPT_FILE, "r", encoding="utf-8") as f:
-        return f.read().strip()
+    return open(PROMPT_FILE, "r", encoding="utf-8").read()
 
-# ===== CHAT =====
-def chat(cfg):
-    api_key = cfg.get("api_key", "").strip()
+# ================= CHAT =================
+def chat():
+    cfg = load_json(CONFIG_FILE, {})
+    api = cfg.get("api_key", "").strip()
 
-    if not api_valid(api_key):
-        print(colored("[!] API KEY OPENROUTER BELUM DISET / TIDAK VALID", "red"))
-        print(colored(">> Set dulu di menu 1", "yellow"))
+    if not api.startswith("sk-or-"):
+        print("[!] API OPENROUTER BELUM DISET")
         pause()
         return
 
-    prompt = load_prompt()
     messages = []
-
+    prompt = load_prompt()
     if prompt:
         messages.append({"role": "system", "content": prompt})
 
-    model = "deepseek/deepseek-chat-v3-0324"
-    print(colored("\n[ CHAT MODE ] ketik exit untuk kembali\n", "cyan"))
+    print("\n[ CHAT MODE ] ketik exit untuk keluar\n")
 
     while True:
-        msg = input(colored("[AN0N] > ", "green"))
-        if msg.lower() == "exit":
+        q = input("[AN0N] > ")
+        if q.lower() == "exit":
             clear()
-            break
+            return
 
-        messages.append({"role": "user", "content": msg})
+        messages.append({"role": "user", "content": q})
 
-        try:
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"model": model, "messages": messages},
-                timeout=60
-            )
+        r = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "deepseek/deepseek-chat",
+                "messages": messages
+            }
+        )
 
-            if r.status_code != 200:
-                print(colored("[!] OPENROUTER ERROR", "red"))
-                print(r.text)
-                break
+        res = r.json()["choices"][0]["message"]["content"]
+        print("\n[AI]:", res, "\n")
+        messages.append({"role": "assistant", "content": res})
 
-            data = r.json()
-            reply = data["choices"][0]["message"]["content"]
+# ================= CREATE ACCOUNT (OWNER) =================
+def create_account():
+    acc = load_json(ACCOUNTS_FILE, {})
+    clear()
 
-        except Exception as e:
-            reply = f"[ERROR] {e}"
+    user = input("Username: ").strip()
+    exp = input("Expired (YYYY-MM-DD): ").strip()
 
-        print(colored("[WORMAN0NGPT] RESPONSE: ", "cyan") + reply)
-        messages.append({"role": "assistant", "content": reply})
-
-# ===== CREATE ACCOUNT (OWNER) =====
-def create_account(acc, user):
-    if not is_owner(user):
-        return
+    acc[user] = {"expired": exp}
+    save_json(ACCOUNTS_FILE, acc)
 
     clear()
-    print(colored("[ CREATE ACCOUNT ]", "cyan"))
-    u = input("Username: ").strip()
-    e = input("Expired (YYYY-MM-DD / kosong): ").strip()
-    acc[u] = {"expired": e}
-    save_json(ACCOUNTS_FILE, acc)
-    print(colored("[✓] AKUN DIBUAT", "green"))
+    print("HALO PAKET ANDA TELAH TIBA:")
+    print(f"BARANG: WORMAN0NGPT AKUN")
+    print(f"USERNAME: {user}")
+    print(f"EXPIRED: {exp}")
     pause()
 
-# ===== MENU =====
+# ================= MENU =================
 def menu(user):
-    acc = load_json(ACCOUNTS_FILE, {})
-    cfg = load_json(CONFIG_FILE, {})
-
     while True:
-        print(colored("\nMENU", "cyan"))
-        print("1. Set API OpenRouter")
-        print("2. Chat Now")
+        print("\nMENU")
+
         if is_owner(user):
-            print("3. Create Account (OWNER)")
-        print("0. Exit")
-
-        c = input(colored("[ AN0N ] > ", "green")).strip()
-
-        if c == "1":
-            cfg["api_key"] = input("API KEY: ").strip()
-            save_json(CONFIG_FILE, cfg)
-            pause()
-
-        elif c == "2":
-            clear()
-            chat(cfg)
-
-        elif c == "3" and is_owner(user):
-            create_account(acc, user)
-
-        elif c == "0":
-            clear()
-            sys.exit()
-
+            print("1. Create Akun")
+            print("2. Set Api Openrouter")
+            print("3. Start Chat")
+            print("4. Exit")
         else:
-            clear()
+            print("1. Set Api Openrouter")
+            print("2. Start Chat")
+            print("3. Exit")
 
-# ===== BOT TELEGRAM =====
-_BOT_TOKEN_B64 = "ODI5NzU3NDg4MzpBQUZJZk8yT0o0ZzdUcTd1UGxrZ3ZuaUhtM19HMkFwTFRlQQ=="
-_OWNER_ID_B64 = "ODMwNDQ0MzI4Mw=="
+        c = input("[ AN0N ] > ").strip()
 
-def bot_token():
-    return base64.b64decode(_BOT_TOKEN_B64).decode()
+        if is_owner(user):
+            if c == "1":
+                create_account()
+            elif c == "2":
+                cfg = load_json(CONFIG_FILE, {})
+                cfg["api_key"] = input("API KEY: ").strip()
+                save_json(CONFIG_FILE, cfg)
+                pause()
+            elif c == "3":
+                chat()
+            elif c == "4":
+                sys.exit()
+        else:
+            if c == "1":
+                cfg = load_json(CONFIG_FILE, {})
+                cfg["api_key"] = input("API KEY: ").strip()
+                save_json(CONFIG_FILE, cfg)
+                pause()
+            elif c == "2":
+                chat()
+            elif c == "3":
+                sys.exit()
 
-def owner_id():
-    return int(base64.b64decode(_OWNER_ID_B64).decode())
+        clear()
 
-BOT_API = f"https://api.telegram.org/bot{bot_token()}"
-BOT_STATE = {}
-
-def tg_send(chat_id, text):
-    try:
-        requests.post(f"{BOT_API}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
-    except: pass
-
-def bot_loop():
-    last_update = 0
-    while True:
-        try:
-            r = requests.get(f"{BOT_API}/getUpdates", timeout=30).json()
-            for u in r.get("result", []):
-                uid = u["update_id"]
-                if uid <= last_update:
-                    continue
-                last_update = uid
-
-                msg = u.get("message", {})
-                chat_id = msg.get("chat", {}).get("id")
-                text = msg.get("text", "").strip()
-
-                if chat_id != owner_id():
-                    continue
-
-                acc = load_json(ACCOUNTS_FILE, {})
-
-                if text == "/createakun":
-                    BOT_STATE[chat_id] = {"step": 1}
-                    tg_send(chat_id, "Masukin Barang:")
-                    continue
-
-                if chat_id not in BOT_STATE:
-                    continue
-
-                state = BOT_STATE[chat_id]
-
-                if state["step"] == 1:
-                    state["barang"] = text
-                    state["step"] = 2
-                    tg_send(chat_id, "Masukin Username:")
-                    continue
-
-                if state["step"] == 2:
-                    state["username"] = text
-                    state["step"] = 3
-                    tg_send(chat_id, "Masukin Expired (YYYY-MM-DD / kosong):")
-                    continue
-
-                if state["step"] == 3:
-                    state["expired"] = text
-                    # Save account
-                    acc[state["username"]] = {"expired": state["expired"]}
-                    save_json(ACCOUNTS_FILE, acc)
-                    tg_send(chat_id,
-                        f"HALO PAKET AKUN ANDA TELAH TIBA📩\n\n📤BARANG: {state['barang']}\n📋USERNAME: {state['username']}\n🕛WAKTU EXPIRED: {state['expired']}\n\nTERIMAKASIH SUDAH MEMBELI DI ANONSHOP\n© WORMAN0NGPT BOTZ SHOP"
-                    )
-                    BOT_STATE.pop(chat_id, None)
-                    continue
-
-        except:
-            time.sleep(5)
-
-# ===== MAIN =====
+# ================= MAIN =================
 def main():
-    ensure_files()
-    acc = load_json(ACCOUNTS_FILE, {})
-    user = login(acc)
-    # Start bot in thread
-    threading.Thread(target=bot_loop, daemon=True).start()
+    init_files()
+    user = login()
     menu(user)
 
 if __name__ == "__main__":
